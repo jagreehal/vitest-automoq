@@ -1,26 +1,19 @@
-/** @type {import('eslint').Linter.Config} */
+import eslint from '@eslint/js';
+import eslintConfigPrettier from 'eslint-config-prettier';
+import eslintPluginUnicorn from 'eslint-plugin-unicorn';
+import tseslint from 'typescript-eslint';
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**'],
   },
   {
-    files: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'],
-    languageOptions: {
-      parser: {
-        // Use the parser provided by the plugin
-        ecmaVersion: 'latest',
-        sourceType: 'module'
-      }
-    },
     plugins: {
-      // Using string names prevents errors when packages are missing
-      '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
+      unicorn: eslintPluginUnicorn,
+      '@typescript-eslint': tseslint,
+      eslint: eslint,
+      eslintConfigPrettier: eslintConfigPrettier,
     },
-    rules: {
-      // Basic rules
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      
+		rules: {
       // Disabled rules to allow our implementation
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/consistent-type-assertions': 'off',
@@ -30,6 +23,6 @@ export default [
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
-    }
-  }
+		},
+	},
 ];
