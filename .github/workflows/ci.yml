@@ -32,6 +32,9 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Install ESLint dependencies
+        run: pnpm add -D @eslint/js eslint-config-prettier eslint-plugin-unicorn typescript-eslint eslint@9
+
       - name: Lint
         run: pnpm lint
 
