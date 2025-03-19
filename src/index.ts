@@ -1,18 +1,4 @@
-import { vi, Mock } from 'vitest';
-
-/**
- * Note: We intentionally use `any` types and type assertions in some places to work around
- * limitations in Vitest's type system and to provide better type inference for mocked methods.
- * 
- * ESLint exceptions are configured for:
- * - @typescript-eslint/no-explicit-any: Required for Vitest's mock type compatibility
- * - @typescript-eslint/consistent-type-assertions: Required for type-safe mocking
- * - unicorn/prefer-spread: Array#concat used for better readability
- * - @typescript-eslint/no-unsafe-*: Required for Vitest's mock implementation
- * 
- * These exceptions are contained within the implementation and don't affect
- * the public API's type safety.
- */
+import { vi, MockInstance } from 'vitest';
 
 // Utility type to extract only method names from a type T.
 type MethodNames<T> = {
@@ -24,26 +10,19 @@ type MethodType<T, K extends keyof T> = T[K] extends (...args: any[]) => any
   ? T[K]
   : never;
 
-// ExtendedMock interface extends Vitest's Mock, adding a type-safe mockResolvedValue.
-// If the original method returns a Promise, then mockResolvedValue only accepts the resolved type.
-interface ExtendedMock<F extends (...args: any[]) => any> extends Mock<F> {
-  mockResolvedValue(
-    value: F extends (...args: any[]) => Promise<infer U> ? U : never
-  ): void;
-}
+// Use Vitest's built-in MockInstance type which already includes mockResolvedValue
+type ExtendedMock<T extends (...args: any[]) => any> = MockInstance<T>;
 
 /**
  * Type-safe utility to auto-moq a method on an instance.
  * - Accepts either a method name (as string) or a function reference.
- * - Returns an object containing:
- *    - `mock`: A type-safe mock function that exactly matches the original method's type.
- *    - `restore`: A function that restores the original implementation using spy.mockRestore().
+ * - Returns a type-safe mock function that exactly matches the original method's type.
  * - Throws if the property is not found or is not a function.
  */
-export function mockMethod<T extends object, K extends keyof T>(
+export function moqFn<T extends object, K extends keyof T>(
   instance: T,
   method: K | T[K]
-): { mock: ExtendedMock<MethodType<T, K>>; restore: () => void } {
+): ExtendedMock<MethodType<T, K>> {
   // Determine the method name whether a string or a function reference is provided.
   const methodName = (
     typeof method === 'string'
@@ -67,28 +46,24 @@ export function mockMethod<T extends object, K extends keyof T>(
   }
 
   // Create a type-safe mock function.
-  const methodMock = vi.fn() as ExtendedMock<MethodType<T, K>>;
+  const methodMock = vi.fn() as unknown as ExtendedMock<MethodType<T, K>>;
 
   // Spy on the method so that it is replaced with our mock.
-  const spy = vi
-    .spyOn(instance as any, methodName as string)
-    .mockImplementation(methodMock as any);
+  vi.spyOn(instance as any, methodName as string)
+    .mockImplementation((...args: any[]) => (methodMock as any)(...args));
 
-  return {
-    mock: methodMock,
-    restore: () => spy.mockRestore(),
-  };
+  return methodMock;
 }
 
 /**
  * Returns a helper that binds the instance so you only need to pass the method reference.
  *
  * Example:
- *   const autoMoq = createMethodMocker(dbService);
- *   const getMoq = autoMoq(dbService.get);
+ *   const mocker = moqFns(dbService);
+ *   const getMock = mocker(dbService.get);
  */
-export function createMethodMocker<T extends object>(instance: T) {
-  return <K extends keyof T>(method: K | T[K]) => mockMethod(instance, method);
+export function moqFns<T extends object>(instance: T) {
+  return <K extends keyof T>(method: K | T[K]) => moqFn(instance, method);
 }
 
 /**
@@ -103,17 +78,13 @@ export function createMethodMocker<T extends object>(instance: T) {
  *  - `mocks`: A mapping from method names to their corresponding ExtendedMock.
  *  - `restoreAll`: A function that, when called, restores all moqed properties.
  */
-export function mockAllPrototypeMethods<T extends object>(
+export function moqAllPrototypeFns<T extends object>(
   instance: T,
   filter?: (key: keyof T) => boolean,
   includeInherited: boolean = false,
   includeInstanceProperties: boolean = false
-): {
-  mocks: { [K in MethodNames<T>]: ExtendedMock<MethodType<T, K>> };
-  restoreAll: () => void;
-} {
+): { [K in MethodNames<T>]: ExtendedMock<MethodType<T, K>> } {
   const mocks = {} as { [K in MethodNames<T>]: ExtendedMock<MethodType<T, K>> };
-  const spies: Array<{ mockRestore: () => void }> = [];
 
   // Auto-moq prototype methods.
   let proto = Object.getPrototypeOf(instance);
@@ -131,11 +102,10 @@ export function mockAllPrototypeMethods<T extends object>(
 
       const property = instance[key];
       if (typeof property === 'function') {
-        const spy = vi
-          .spyOn(instance as any, key as string)
-          .mockImplementation(vi.fn());
-        mocks[key as MethodNames<T>] = spy as ExtendedMock<MethodType<T, typeof key>>;
-        spies.push(spy);
+        const mock = vi.fn() as unknown as ExtendedMock<MethodType<T, typeof key>>;
+        vi.spyOn(instance as any, key as string)
+          .mockImplementation((...args: any[]) => (mock as any)(...args));
+        mocks[key as MethodNames<T>] = mock;
       }
     }
     if (!includeInherited) break;
@@ -148,17 +118,13 @@ export function mockAllPrototypeMethods<T extends object>(
       if (filter && !filter(key)) continue;
       const property = instance[key];
       if (typeof property === 'function') {
-        const spy = vi
-          .spyOn(instance as any, key as string)
-          .mockImplementation(vi.fn());
-        mocks[key as MethodNames<T>] = spy as ExtendedMock<MethodType<T, typeof key>>;
-        spies.push(spy);
+        const mock = vi.fn() as unknown as ExtendedMock<MethodType<T, typeof key>>;
+        vi.spyOn(instance as any, key as string)
+          .mockImplementation((...args: any[]) => (mock as any)(...args));
+        mocks[key as MethodNames<T>] = mock;
       }
     }
   }
 
-  return {
-    mocks,
-    restoreAll: () => { for (const spy of spies) spy.mockRestore() },
-  };
+  return mocks;
 }

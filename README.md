@@ -1,6 +1,6 @@
 # vitest-automoq
 
-Type-safe utility functions for mocking methods in Vitest. 
+Type-safe utility functions for mocking methods in Vitest.
 
 This library provides enhanced type safety and convenience when working with Vitest mocks, handling all type complexities internally so you can focus on writing tests.
 
@@ -26,12 +26,12 @@ yarn add vitest-automoq
 
 ## API
 
-### `mockMethod`
+### `moqFn`
 
 Easy-to-use utility to mock any method. Just pass your instance and a method:
 
 ```typescript
-import { mockMethod } from 'vitest-automoq';
+import { moqFn } from 'vitest-automoq';
 
 class UserService {
   async getUser(id: number) {
@@ -41,29 +41,31 @@ class UserService {
 
 const service = new UserService();
 
-// Easy API - returns a mocker with mock and restore functions
-const mocker = mockMethod(service, service.getUser);
+// Returns a type-safe mock function
+const mock = moqFn(service, service.getUser);
 
-// Set up your mock implementation
-mocker.mock.mockResolvedValue({ id: 1, name: 'Mock User' });
+// Set up your mock implementation with full type safety
+mock.mockResolvedValue({ id: 1, name: 'Mock User' }); // ✅ Type-safe
+mock.mockResolvedValue('wrong type'); // ❌ Type error
+mock.mockResolvedValue({ id: 1 }); // ❌ Type error - missing name
 
 // Use your mocked service
 const user = await service.getUser(1);
 console.log(user); // { id: 1, name: 'Mock User' }
 
 // Verify your mock was called
-expect(mocker.mock).toHaveBeenCalledWith(1);
+expect(mock).toHaveBeenCalledWith(1);
 
-// Restore original implementation when done
-mocker.restore();
+// Restore all mocks when done
+vi.restoreAllMocks();
 ```
 
-### `createMethodMocker`
+### `moqFns`
 
 Creates a reusable mocker for cleaner test setup. Perfect for mocking multiple methods on the same instance:
 
 ```typescript
-import { createMethodMocker } from 'vitest-automoq';
+import { moqFns } from 'vitest-automoq';
 
 class DatabaseService {
   async get(id: number) {
@@ -77,29 +79,26 @@ class DatabaseService {
 
 // Create once, use many times
 const service = new DatabaseService();
-const autoMoq = createMethodMocker(service);
+const mocker = moqFns(service);
 
-// Two styles to choose from:
+// Simple and clean API with full type safety
+const getMock = mocker(service.get);
+getMock.mockResolvedValue({ id: 1, data: 'mocked' }); // ✅ Type-safe
 
-// Style 1: Quick and compact
-const getMoq = autoMoq(service.get);
-getMoq.mock.mockResolvedValue({ id: 1, data: 'mocked' });
+const saveMock = mocker(service.save);
+saveMock.mockResolvedValue(true); // ✅ Type-safe
 
-// Style 2: Destructured (familiar to vi.spyOn users)
-const { mock: saveMock } = autoMoq(service.save);
-saveMock.mockResolvedValue(true);
-
-// Both styles provide the same functionality
+// Use your mocked service
 const result = await service.get(1);
 expect(result.data).toBe('mocked');
 ```
 
-### `mockAllPrototypeMethods`
+### `moqAllPrototypeFns`
 
 Bulk mock all methods with smart filtering options:
 
 ```typescript
-import { mockAllPrototypeMethods } from 'vitest-automoq';
+import { moqAllPrototypeFns } from 'vitest-automoq';
 
 class PaymentService {
   async processPayment(amount: number) {
@@ -117,19 +116,19 @@ class PaymentService {
 
 const paymentService = new PaymentService();
 
-// Mock all methods at once
-const mocker = mockAllPrototypeMethods(paymentService);
+// Mock all methods at once - returns an object of type-safe mocks
+const mocks = moqAllPrototypeFns(paymentService);
 
-// All methods are mocked and accessible
-mocker.mocks.processPayment.mockResolvedValue({ success: false });
-mocker.mocks.refund.mockResolvedValue({ success: true });
+// All methods are mocked and accessible directly with full type safety
+mocks.processPayment.mockResolvedValue({ success: false }); // ✅ Type-safe
+mocks.refund.mockResolvedValue({ success: true }); // ✅ Type-safe
 
 // Use your mocked service
 const result = await paymentService.processPayment(100);
 expect(result.success).toBe(false);
 
 // Clean up when done
-mocker.restoreAll();
+vi.restoreAllMocks();
 ```
 
 ## Advanced Usage
@@ -146,8 +145,8 @@ class Calculator {
 }
 
 // Mock static method
-const mocker = mockMethod(Calculator, 'add');
-mocker.mock.mockReturnValue(100);
+const mock = moqFn(Calculator, 'add');
+mock.mockReturnValue(100); // ✅ Type-safe
 
 // Use mocked static method
 const result = Calculator.add(5, 10);
@@ -159,7 +158,7 @@ expect(result).toBe(100);
 Selectively mock only the methods you need:
 
 ```typescript
-const mocker = mockAllPrototypeMethods(
+const mocks = moqAllPrototypeFns(
   service,
   (key) => !key.startsWith('_'), // Skip private methods
   true,  // Include inherited methods
@@ -169,9 +168,14 @@ const mocker = mockAllPrototypeMethods(
 
 ### Type Safety Without Extra Work
 
-All mocked methods retain their original types:
+All mocked methods retain their original types with zero configuration:
 
 ```typescript
+interface User {
+  id: number;
+  name: string;
+}
+
 class UserRepository {
   async findById(id: number): Promise<User> {
     return db.users.findById(id);
@@ -179,75 +183,15 @@ class UserRepository {
 }
 
 const repo = new UserRepository();
-const mocker = mockMethod(repo, repo.findById);
+const mock = moqFn(repo, repo.findById);
 
 // TypeScript knows this is a User object
-mocker.mock.mockResolvedValue({ id: 1, name: 'User 1' });
+mock.mockResolvedValue({ id: 1, name: 'User 1' }); // ✅ Type-safe
 
 // TypeScript prevents incorrect types
-// @ts-expect-error - Can't return a string for a User
-mocker.mock.mockResolvedValue('wrong type');
+mock.mockResolvedValue('wrong type'); // ❌ Type error
+mock.mockResolvedValue({ id: 1 }); // ❌ Type error - missing name
 ```
-
-## TypeScript Troubleshooting
-
-### TypeScript Linter Errors
-
-If you see TypeScript errors like:
-```
-Argument of type '"mocked"' is not assignable to parameter of type 'never'.
-```
-
-Or:
-```
-Property 'methodName' does not exist on type '{}'.
-```
-
-These are typically due to TypeScript's limitations with complex type inference and don't affect runtime functionality. Your tests will still run correctly.
-
-### Solutions
-
-1. **Use type assertions**: Add type assertions to tell TypeScript the expected type.
-
-```typescript
-// Method 1: Type assertion on the mock itself
-(mocker.mock.mockReturnValue as any)('mocked'); 
-
-// Method 2: Type assertion on the return value
-mocker.mock.mockReturnValue('mocked' as any);
-```
-
-2. **Disable specific linter rules**: If you're using ESLint, you can disable specific rules for test files.
-
-```typescript
-// At the top of your test file
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-```
-
-3. **Add helper types**: Create helper types to make your tests more type-safe.
-
-```typescript
-// Define a helper type for your mocks
-type TypedMock<T> = {
-  mockReturnValue(value: T): void;
-  mockResolvedValue(value: T extends Promise<infer U> ? U : never): void;
-};
-
-// Use it in your tests
-const { mock } = mockMethod(service, service.someMethod);
-(mock as unknown as TypedMock<ReturnType<typeof service.someMethod>>)
-  .mockReturnValue(expectedValue);
-```
-
-4. **Use the simplest approach**: If you don't need type checking in tests, use a simple type assertion.
-
-```typescript
-// Just let it work and focus on testing behavior
-mocker.mock.mockReturnValue('mocked' as any);
-```
-
-Remember, the most important thing is that your tests verify the correct behavior, not that they pass the TypeScript checker. The runtime behavior is what matters.
 
 ## Contributing
 

@@ -1,10 +1,4 @@
-import { Mock } from 'vitest';
-
-// Common type for mocked methods - simplified to avoid type conflicts
-export interface MockResult<T extends (...args: any[]) => any> {
-  mock: Mock<T>;
-  restore: () => void;
-}
+import { MockInstance } from 'vitest';
 
 /**
  * Type-safe utility to auto-moq a method on an instance.
@@ -13,7 +7,7 @@ export interface MockResult<T extends (...args: any[]) => any> {
 export function mockMethod<T extends object, K extends keyof T>(
   instance: T,
   method: K | T[K]
-): MockResult<T[K] extends (...args: any[]) => any ? T[K] : never>;
+): T[K] extends (...args: any[]) => any ? MockInstance<T[K]> : never;
 
 /**
  * Returns a helper that binds the instance so you only need to pass the method reference.
@@ -26,7 +20,7 @@ export function createMethodMocker<T extends object>(
   instance: T
 ): <K extends keyof T>(
   method: K | T[K]
-) => MockResult<T[K] extends (...args: any[]) => any ? T[K] : never>;
+) => T[K] extends (...args: any[]) => any ? MockInstance<T[K]> : never;
 
 /**
  * Auto-moqs all function properties found on an instance's prototype.
@@ -38,6 +32,5 @@ export function mockAllPrototypeMethods<T extends object>(
   includeInherited?: boolean,
   includeInstanceProperties?: boolean
 ): {
-  mocks: Record<string, Mock<any>>;
-  restoreAll: () => void;
+  [K in keyof T]: T[K] extends (...args: any[]) => any ? MockInstance<T[K]> : never;
 }; 

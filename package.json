@@ -1,6 +1,6 @@
 {
   "name": "vitest-automoq",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Type-safe utility functions for mocking methods in Vitest",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
